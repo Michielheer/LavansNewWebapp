@@ -31,8 +31,8 @@ export default function LavansApp() {
 
   // API hooks
   const { klanten, loading: klantenLoading, error: klantenError } = useKlanten();
-  const { abonnementen, loading: abonnementenLoading, error: abonnementenError } = useAbonnementen(selectedKlant);
-  const { contactpersonen, loading: contactpersonenLoading, error: contactpersonenError } = useContactpersonen(selectedKlant);
+  const { abonnementen, loading: abonnementenLoading, error: abonnementenError } = useAbonnementen(relatienummer);
+  const { contactpersonen, loading: contactpersonenLoading, error: contactpersonenError } = useContactpersonen(relatienummer);
   const { saveInspectie, saving, error: saveError } = useSaveInspectie();
 
   // Hulpfuncties
