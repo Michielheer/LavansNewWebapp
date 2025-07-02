@@ -6,38 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-
-// Simuleer database data
-const mockKlanten = [
-  { relatienummer: "1001", naam: "Bedrijf A" },
-  { relatienummer: "1002", naam: "Bedrijf B" },
-  { relatienummer: "1003", naam: "Bedrijf C" },
-];
-
-const mockAbonnementen = {
-  "1001": [
-    { productnummer: "00M001", productomschrijving: "Standaard Mat", activiteit: "matten", afdeling: "Receptie", ligplaats: "Ingang", aantal: 2, barcode: "0300522" },
-    { productnummer: "L001", productomschrijving: "Logo Mat", activiteit: "matten", afdeling: "Algemeen", ligplaats: "Algemeen", aantal: 1, barcode: "0300522" },
-    { productnummer: "W001", productomschrijving: "Snelwisser 75 cm", activiteit: "wissers", aantal: 5 },
-    { productnummer: "W002", productomschrijving: "Steel glasvezel lavanswisser", activiteit: "wissers", aantal: 3 },
-    { productnummer: "W003", productomschrijving: "Opvangbak lavanswisser 75 cm. / 100 cm.", activiteit: "wissers", aantal: 2 },
-    { productnummer: "W004", productomschrijving: "Muursteun lavanswisser zwart", activiteit: "wissers", aantal: 1 },
-  ],
-  "1002": [
-    { productnummer: "00M002", productomschrijving: "Standaard Mat", activiteit: "matten", afdeling: "Kantoor", ligplaats: "Hoofdingang", aantal: 3 },
-    { productnummer: "W002", productomschrijving: "Wisser Type B", activiteit: "wissers", aantal: 3 },
-  ]
-};
-
-const mockContactpersonen = {
-  "1001": [
-    { voornaam: "Jan", tussenvoegsel: "", achternaam: "Jansen", email: "jan@bedrijfa.nl", telefoon: "020-1234567", klantenportaal: "jan.jansen", nog_in_dienst: true, routecontact: true },
-    { voornaam: "Piet", tussenvoegsel: "van", achternaam: "Bergen", email: "piet@bedrijfa.nl", telefoon: "020-1234568", klantenportaal: "", nog_in_dienst: true, routecontact: false },
-  ],
-  "1002": [
-    { voornaam: "Anna", tussenvoegsel: "", achternaam: "Smit", email: "anna@bedrijfb.nl", telefoon: "020-1234569", klantenportaal: "anna.smit", nog_in_dienst: true, routecontact: true },
-  ]
-};
+import { useKlanten, useAbonnementen, useContactpersonen, useSaveInspectie } from "./hooks/useApi";
 
 export default function LavansApp() {
   const [selectedTab, setSelectedTab] = useState("inspectie");
@@ -59,6 +28,12 @@ export default function LavansApp() {
   const [inspecties, setInspecties] = useState([]);
   const [mattenData, setMattenData] = useState({});
   const [wissersData, setWissersData] = useState({});
+
+  // API hooks
+  const { klanten, loading: klantenLoading, error: klantenError } = useKlanten();
+  const { abonnementen, loading: abonnementenLoading, error: abonnementenError } = useAbonnementen(selectedKlant);
+  const { contactpersonen, loading: contactpersonenLoading, error: contactpersonenError } = useContactpersonen(selectedKlant);
+  const { saveInspectie, saving, error: saveError } = useSaveInspectie();
 
   // Hulpfuncties
   const formatNaam = (voornaam, tussenvoegsel, achternaam) => {
@@ -228,10 +203,17 @@ export default function LavansApp() {
       setRelatienummer(nr);
       setKlantnaam(naam);
       
-      // Laad abonnementen
-      const abos = mockAbonnementen[nr] || [];
-      const mattenAbos = abos.filter(a => a.activiteit === "matten");
-      const wissersAbos = abos.filter(a => a.activiteit === "wissers");
+      // Reset to-do lijsten
+      setTodoList([]);
+      setKsTodoList([]);
+    }
+  }, [selectedKlant]);
+
+  // Laad abonnementen data wanneer beschikbaar
+  useEffect(() => {
+    if (abonnementen && abonnementen.length > 0) {
+      const mattenAbos = abonnementen.filter(a => a.activiteit === "matten");
+      const wissersAbos = abonnementen.filter(a => a.activiteit === "wissers");
       
       // Bouw mattenlijsten
       const standaardMatten = [];
@@ -280,25 +262,24 @@ export default function LavansApp() {
         "Opmerking": ""
       }));
       setToebehorenTabel(toebehoren);
-      
-      // Laad contactpersonen
-      const contacten = mockContactpersonen[nr] || [];
-      setContactpersonenData(contacten);
+    }
+  }, [abonnementen]);
+
+  // Laad contactpersonen data wanneer beschikbaar
+  useEffect(() => {
+    if (contactpersonen && contactpersonen.length > 0) {
+      setContactpersonenData(contactpersonen);
       
       // Zoek routecontact
-      const routecontact = contacten.find(c => c.routecontact);
+      const routecontact = contactpersonen.find(c => c.routecontact);
       if (routecontact) {
         setContactpersoon({
           naam: formatNaam(routecontact.voornaam, routecontact.tussenvoegsel, routecontact.achternaam),
           email: routecontact.email
         });
       }
-      
-      // Reset to-do lijsten
-      setTodoList([]);
-      setKsTodoList([]);
     }
-  }, [selectedKlant]);
+  }, [contactpersonen]);
 
   // Simuleer ophalen van inspectie data
   useEffect(() => {
@@ -317,25 +298,32 @@ export default function LavansApp() {
     return Object.entries(counts).map(([name, count]) => ({ name, count }));
   };
 
-  const handleSaveInspectie = () => {
-    // Genereer to-do's
-    genereerTodoList();
-    
-    // Log inspectie (in echte app zou dit naar database gaan)
-    const inspectieData = {
-      relatienummer,
-      klantnaam,
-      contactpersoon: contactpersoon.naam,
-      contact_email: contactpersoon.email,
-      inspecteur,
-      datum: inspectieDatum,
-      tijd: inspectieTijd,
-      matten_data: { matten_lijst: mattenLijst, logomatten_lijst: logomattenLijst },
-      wissers_data: { wissers_tabel: wissersTabel, toebehoren_tabel: toebehorenTabel }
-    };
-    
-    console.log("Inspectie opgeslagen:", inspectieData);
-    alert("Inspectie succesvol opgeslagen!");
+  const handleSaveInspectie = async () => {
+    try {
+      // Genereer to-do's
+      genereerTodoList();
+      
+      // Bereid inspectie data voor
+      const inspectieData = {
+        relatienummer,
+        klantnaam,
+        contactpersoon: contactpersoon.naam,
+        contact_email: contactpersoon.email,
+        inspecteur,
+        datum: inspectieDatum,
+        tijd: inspectieTijd,
+        matten_data: { matten_lijst: mattenLijst, logomatten_lijst: logomattenLijst },
+        wissers_data: { wissers_tabel: wissersTabel, toebehoren_tabel: toebehorenTabel }
+      };
+      
+      // Sla op via API
+      await saveInspectie(inspectieData);
+      alert("Inspectie succesvol opgeslagen!");
+      
+    } catch (error) {
+      console.error("Fout bij opslaan inspectie:", error);
+      alert(`Fout bij opslaan inspectie: ${error.message}`);
+    }
   };
 
   return (
@@ -350,14 +338,18 @@ export default function LavansApp() {
           value={selectedKlant}
           onChange={(e) => setSelectedKlant(e.target.value)}
           className="w-full p-3 sm:p-2 border rounded-md text-base"
+          disabled={klantenLoading}
         >
-          <option value="">Kies een klant...</option>
-          {mockKlanten.map(klant => (
+          <option value="">{klantenLoading ? "Laden..." : "Kies een klant..."}</option>
+          {klanten.map(klant => (
             <option key={klant.relatienummer} value={`${klant.relatienummer} - ${klant.naam}`}>
               {klant.relatienummer} - {klant.naam}
             </option>
           ))}
         </select>
+        {klantenError && (
+          <p className="text-red-500 text-sm mt-1">Fout bij laden klanten: {klantenError}</p>
+        )}
       </div>
 
       {selectedKlant && (
@@ -412,8 +404,22 @@ export default function LavansApp() {
                   </div>
                 </div>
 
+                {/* Loading state */}
+                {abonnementenLoading && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Laden van abonnementen...</p>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {abonnementenError && (
+                  <div className="text-center py-8">
+                    <p className="text-red-500">Fout bij laden abonnementen: {abonnementenError}</p>
+                  </div>
+                )}
+
                 {/* Matten sectie */}
-                {mattenLijst.length > 0 && (
+                {!abonnementenLoading && !abonnementenError && mattenLijst.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Matten Inspectie</h3>
                     
@@ -914,9 +920,16 @@ export default function LavansApp() {
                   />
                 </div>
 
-                                 <Button onClick={handleSaveInspectie} className="w-full p-4 text-base">
-                   💾 Sla alles op voor deze klant
-                 </Button>
+                                 <Button 
+                                   onClick={handleSaveInspectie} 
+                                   className="w-full p-4 text-base"
+                                   disabled={saving}
+                                 >
+                                   {saving ? "💾 Opslaan..." : "💾 Sla alles op voor deze klant"}
+                                 </Button>
+                                 {saveError && (
+                                   <p className="text-red-500 text-sm mt-2">Fout bij opslaan: {saveError}</p>
+                                 )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -997,7 +1010,22 @@ export default function LavansApp() {
                   Pas aan waar nodig. Als alles klopt, hoef je niets te doen.
                 </p>
                 
-                {contactpersonenData.map((contact, index) => (
+                {/* Loading state */}
+                {contactpersonenLoading && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Laden van contactpersonen...</p>
+                  </div>
+                )}
+
+                {/* Error state */}
+                {contactpersonenError && (
+                  <div className="text-center py-8">
+                    <p className="text-red-500">Fout bij laden contactpersonen: {contactpersonenError}</p>
+                  </div>
+                )}
+
+                {/* Contactpersonen data */}
+                {!contactpersonenLoading && !contactpersonenError && contactpersonenData.map((contact, index) => (
                   <div key={index} className="border rounded-lg p-4 space-y-4">
                     <h3 className="font-medium">
                       {formatNaam(contact.voornaam, contact.tussenvoegsel, contact.achternaam)}
