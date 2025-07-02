@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
-namespace LavansBackendTest.Data
+namespace LavansApi.Data
 {
     // Database Context
     public class LavansDbContext : DbContext
@@ -363,14 +363,15 @@ namespace LavansBackendTest.Data
 
         [Required]
         [StringLength(500)]
-        public string Text { get; set; }
+        public string? Text { get; set; }
 
         public bool Done { get; set; }
 
         [StringLength(20)]
-        public string Type { get; set; } // "inspectie" of "klantenservice"
+        public string? Type { get; set; } // "inspectie" of "klantenservice"
 
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+        public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
         [Required]
         public string InspectieId { get; set; }
@@ -448,9 +449,9 @@ namespace LavansBackendTest.Data
 
     public class WisserInspectieCreateModel
     {
-        public string TypeWisser { get; set; }
+        public string? TypeWisser { get; set; }
         public int AantalAanwezig { get; set; }
         public int VuilPercentage { get; set; }
-        public string Opmerking { get; set; }
+        public string? Opmerking { get; set; }
     }
 } 

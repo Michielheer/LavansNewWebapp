@@ -1,12 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.SQLite;
+using Microsoft.Data.Sqlite;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Dapper;
 
-namespace LavansBackendTest.Services
+namespace LavansApi.Services
 {
     public class LavansDatabaseService
     {
@@ -20,7 +20,7 @@ namespace LavansBackendTest.Services
         // Directe database queries naar lokale SQLite database
         public async Task<IEnumerable<dynamic>> GetKlantenAsync()
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             return await connection.QueryAsync(@"
                 SELECT 
                     Relatienummer,
@@ -37,7 +37,7 @@ namespace LavansBackendTest.Services
 
         public async Task<dynamic> GetKlantAsync(string relatienummer)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             return await connection.QueryFirstOrDefaultAsync(@"
                 SELECT 
                     Relatienummer,
@@ -55,7 +55,7 @@ namespace LavansBackendTest.Services
 
         public async Task<IEnumerable<dynamic>> GetAbonnementenAsync(string klantRelatienummer)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             return await connection.QueryAsync(@"
                 SELECT 
                     Id,
@@ -74,7 +74,7 @@ namespace LavansBackendTest.Services
 
         public async Task<IEnumerable<dynamic>> GetContactpersonenAsync(string klantRelatienummer)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             return await connection.QueryAsync(@"
                 SELECT 
                     Id,
@@ -95,7 +95,7 @@ namespace LavansBackendTest.Services
 
         public async Task<IEnumerable<dynamic>> GetInspectiesAsync(string klantRelatienummer = null)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             var sql = @"
                 SELECT 
                     i.Id,
@@ -126,7 +126,7 @@ namespace LavansBackendTest.Services
 
         public async Task<dynamic> GetInspectieDetailsAsync(string inspectieId)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             
             // Hoofdinspectie
             var inspectie = await connection.QueryFirstOrDefaultAsync(@"
@@ -170,7 +170,7 @@ namespace LavansBackendTest.Services
 
         public async Task<string> SaveInspectieAsync(dynamic inspectieData)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync();
             using var transaction = connection.BeginTransaction();
 
@@ -290,7 +290,7 @@ namespace LavansBackendTest.Services
 
         public async Task<object> GetRapportageAsync(string klantRelatienummer, DateTime startDatum, DateTime eindDatum)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             
             // Klantgegevens
             var klant = await GetKlantAsync(klantRelatienummer);
@@ -432,9 +432,9 @@ namespace LavansBackendTest.Services
             return todoItems;
         }
 
-        public async Task<dynamic> UpdateTodoAsync(string todoId, bool done, string text = null)
+        public async Task<object> UpdateTodoAsync(string todoId, bool done, string text = null)
         {
-            using var connection = new SQLiteConnection(_connectionString);
+            using var connection = new SqliteConnection(_connectionString);
             
             // Eerst controleren of de todo bestaat
             var existingTodo = await connection.QueryFirstOrDefaultAsync(@"
@@ -445,24 +445,29 @@ namespace LavansBackendTest.Services
                 return null;
 
             // Update de todo
-            var updateSql = "UPDATE TodoItems SET Done = @Done";
-            var parameters = new { TodoId = todoId, Done = done };
+            var updateSql = "UPDATE TodoItems SET Done = @Done, UpdatedAt = @UpdatedAt";
+            object parameters;
 
             if (!string.IsNullOrEmpty(text))
             {
                 updateSql += ", Text = @Text";
-                parameters = new { TodoId = todoId, Done = done, Text = text };
+                parameters = new { TodoId = todoId, Done = done, Text = text, UpdatedAt = DateTime.Now };
+            }
+            else
+            {
+                parameters = new { TodoId = todoId, Done = done, UpdatedAt = DateTime.Now };
             }
 
-            updateSql += ", UpdatedAt = @UpdatedAt WHERE Id = @TodoId";
-            parameters = new { TodoId = todoId, Done = done, Text = text, UpdatedAt = DateTime.Now };
+            updateSql += " WHERE Id = @TodoId";
 
             await connection.ExecuteAsync(updateSql, parameters);
 
-            // Haal de bijgewerkte todo op
-            return await connection.QueryFirstOrDefaultAsync(@"
-                SELECT * FROM TodoItems WHERE Id = @TodoId",
+            // Haal de bijgewerkte todo op en retourneer alleen de verwachte velden
+            var updatedTodo = await connection.QueryFirstOrDefaultAsync(@"
+                SELECT Id, Done, UpdatedAt FROM TodoItems WHERE Id = @TodoId",
                 new { TodoId = todoId });
+
+            return updatedTodo;
         }
 
         // Sync wrappers voor de controller
@@ -474,7 +479,7 @@ namespace LavansBackendTest.Services
         public dynamic GetInspectieDetails(string inspectieId) => GetInspectieDetailsAsync(inspectieId).Result;
         public string SaveInspectie(dynamic inspectieData) => SaveInspectieAsync(inspectieData).Result;
         public object GetRapportage(string klantRelatienummer, DateTime startDatum, DateTime eindDatum) => GetRapportageAsync(klantRelatienummer, startDatum, eindDatum).Result;
-        public dynamic UpdateTodo(string todoId, bool done, string text = null) => UpdateTodoAsync(todoId, done, text).Result;
+        public object UpdateTodo(string todoId, bool done, string text = null) => UpdateTodoAsync(todoId, done, text).Result;
 
         public string BerekenLeeftijd(string barcode)
         {

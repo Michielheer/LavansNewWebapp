@@ -2,16 +2,18 @@ using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using LavansApi.Data;
+using LavansApi.Services;
 
-namespace LavansBackendTest.Controllers
+namespace LavansApi.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
     public class LavansController : ControllerBase
     {
-        private readonly LavansDatabaseService _service;
+        private readonly LavansApi.Services.LavansDatabaseService _service;
 
-        public LavansController(LavansDatabaseService service)
+        public LavansController(LavansApi.Services.LavansDatabaseService service)
         {
             _service = service;
         }
@@ -91,8 +93,8 @@ namespace LavansBackendTest.Controllers
                 if (string.IsNullOrEmpty(inspectie.KlantRelatienummer))
                     return BadRequest(new { error = "Klant relatienummer is verplicht" });
 
-                var opgeslagenInspectie = _service.SaveInspectie(inspectie);
-                return CreatedAtAction(nameof(GetInspectie), new { id = opgeslagenInspectie.Id }, opgeslagenInspectie);
+                var opgeslagenInspectieId = _service.SaveInspectie(inspectie);
+                return CreatedAtAction(nameof(GetInspectie), new { id = opgeslagenInspectieId }, new { id = opgeslagenInspectieId });
             }
             catch (Exception ex)
             {
@@ -190,28 +192,8 @@ namespace LavansBackendTest.Controllers
     public class TodoUpdateRequest
     {
         public bool Done { get; set; }
-        public string Text { get; set; }
+        public string? Text { get; set; }
     }
 
-    // Startup.cs configuratie voorbeeld
-    public static class StartupExtensions
-    {
-        public static void ConfigureLavansServices(this IServiceCollection services, IConfiguration configuration)
-        {
-            // Registreer de LavansDatabaseService als singleton met connection string
-            services.AddSingleton<LavansDatabaseService>(provider => 
-                new LavansDatabaseService(configuration.GetConnectionString("LavansDatabase")));
-            
-            // Voeg CORS toe voor frontend
-            services.AddCors(options =>
-            {
-                options.AddPolicy("AllowReactApp", policy =>
-                {
-                    policy.WithOrigins("http://localhost:5173", "http://localhost:5174")
-                          .AllowAnyHeader()
-                          .AllowAnyMethod();
-                });
-            });
-        }
-    }
+
 } 

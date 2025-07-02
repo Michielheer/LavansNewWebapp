@@ -341,13 +341,13 @@ namespace LavansBackendTest
                 MattenStatistieken = new
                 {
                     TotaalAantal = inspecties.Sum(i => i.Matten.Count),
-                    GemiddeldAanwezig = inspecties.Any() ? inspectie.Matten.Average(m => m.Aanwezig ? 1 : 0) : 0,
+                    GemiddeldAanwezig = inspecties.Any() ? inspecties.Average(i => i.Matten.Average(m => m.Aanwezig ? 1 : 0)) : 0,
                     SterkVervuild = inspecties.Sum(i => i.Matten.Count(m => m.VuilgraadLabel == "Sterk vervuild"))
                 },
                 WissersStatistieken = new
                 {
                     TotaalAantal = inspecties.Sum(i => i.Wissers.Count),
-                    GemiddeldAanwezig = inspecties.Any() ? inspectie.Wissers.Average(w => w.AantalAanwezig) : 0
+                    GemiddeldAanwezig = inspecties.Any() ? inspecties.Average(i => i.Wissers.Average(w => w.AantalAanwezig)) : 0
                 }
             };
         }

@@ -16,7 +16,7 @@ export function useKlanten() {
       setLoading(true);
       setError(null);
       const data = await apiService.getKlanten();
-      setKlanten(data);
+      setKlanten(data.map(k => ({ ...k, Naam: k.Naam, Relatienummer: k.Relatienummer })));
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden klanten:', err);
@@ -45,7 +45,7 @@ export function useKlant(relatienummer) {
       setLoading(true);
       setError(null);
       const data = await apiService.getKlant(relatienummer);
-      setKlant(data);
+      setKlant(data.map(k => ({ ...k, Naam: k.Naam, Relatienummer: k.Relatienummer })));
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden klant:', err);
@@ -103,7 +103,7 @@ export function useContactpersonen(klantRelatienummer) {
       setLoading(true);
       setError(null);
       const data = await apiService.getContactpersonen(klantRelatienummer);
-      setContactpersonen(data);
+      setContactpersonen(data.map(c => ({ ...c, Voornaam: c.Voornaam, Relatienummer: c.Relatienummer })));
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden contactpersonen:', err);

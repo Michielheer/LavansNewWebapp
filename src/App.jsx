@@ -212,8 +212,8 @@ export default function LavansApp() {
   // Laad abonnementen data wanneer beschikbaar
   useEffect(() => {
     if (abonnementen && abonnementen.length > 0) {
-      const mattenAbos = abonnementen.filter(a => a.activiteit === "matten");
-      const wissersAbos = abonnementen.filter(a => a.activiteit === "wissers");
+      const mattenAbos = abonnementen.filter(a => a.Activiteit === "Matten");
+      const wissersAbos = abonnementen.filter(a => a.Activiteit === "Wissers");
       
       // Bouw mattenlijsten
       const standaardMatten = [];
@@ -221,22 +221,24 @@ export default function LavansApp() {
       
       for (const abo of mattenAbos) {
         const matInfo = {
-          mat_type: abo.productomschrijving,
-          afdeling: abo.afdeling || "Algemeen",
-          ligplaats: abo.ligplaats || "Algemeen",
-          aantal: abo.aantal || 0,
+          mat_type: abo.Productomschrijving,
+          afdeling: abo.Afdeling || "Algemeen",
+          ligplaats: abo.Ligplaats || "Algemeen",
+          aantal: abo.Aantal || 0,
           aanwezig: false,
           schoon_onbeschadigd: true,
           vuilgraad_label: "",
           vuilgraad: 1,
-          barcode: abo.barcode || "",
-          bezoekritme: abo.bezoekritme || ""
+          barcode: abo.Barcode || "",
+          bezoekritme: abo.Bezoekritme || ""
         };
         
-        if (abo.productnummer.startsWith("00M")) {
-          standaardMatten.push(matInfo);
-        } else if (abo.productnummer.startsWith("L")) {
-          logoMatten.push(matInfo);
+        if (abo.Productnummer.startsWith("MAT")) {
+          if (abo.Productomschrijving.toLowerCase().includes("logo")) {
+            logoMatten.push(matInfo);
+          } else {
+            standaardMatten.push(matInfo);
+          }
         }
       }
       
@@ -245,7 +247,7 @@ export default function LavansApp() {
       
       // Bouw wissers tabel
       const wissers = wissersAbos.map(abo => ({
-        "Type wisser": abo.productomschrijving,
+        "Type wisser": abo.Productomschrijving,
         "Aantal aanwezig": 0,
         "Waarvan gebruikt": 0,
         "Vuil percentage": null,
@@ -256,7 +258,7 @@ export default function LavansApp() {
       
       // Bouw toebehoren tabel
       const toebehoren = wissersAbos.map(abo => ({
-        "Type accessoire": abo.productomschrijving,
+        "Type accessoire": abo.Productomschrijving,
         "Vervangen": false,
         "Aantal": 0,
         "Opmerking": ""
@@ -271,11 +273,11 @@ export default function LavansApp() {
       setContactpersonenData(contactpersonen);
       
       // Zoek routecontact
-      const routecontact = contactpersonen.find(c => c.routecontact);
+      const routecontact = contactpersonen.find(c => c.Routecontact);
       if (routecontact) {
         setContactpersoon({
-          naam: formatNaam(routecontact.voornaam, routecontact.tussenvoegsel, routecontact.achternaam),
-          email: routecontact.email
+          naam: formatNaam(routecontact.Voornaam, routecontact.Tussenvoegsel, routecontact.Achternaam),
+          email: routecontact.Email
         });
       }
     }
@@ -342,8 +344,8 @@ export default function LavansApp() {
         >
           <option value="">{klantenLoading ? "Laden..." : "Kies een klant..."}</option>
           {klanten.map(klant => (
-            <option key={klant.relatienummer} value={`${klant.relatienummer} - ${klant.naam}`}>
-              {klant.relatienummer} - {klant.naam}
+            <option key={klant.Relatienummer} value={`${klant.Relatienummer} - ${klant.Naam}`}>
+              {klant.Relatienummer} - {klant.Naam}
             </option>
           ))}
         </select>
@@ -419,6 +421,11 @@ export default function LavansApp() {
                 )}
 
                 {/* Matten sectie */}
+                {!abonnementenLoading && !abonnementenError && mattenLijst.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Geen matten-abonnementen gevonden voor deze klant.</p>
+                  </div>
+                )}
                 {!abonnementenLoading && !abonnementenError && mattenLijst.length > 0 && (
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Matten Inspectie</h3>
@@ -655,6 +662,11 @@ export default function LavansApp() {
                      </div>
 
                     {/* Logomatten */}
+                    {logomattenLijst.length === 0 && (
+                      <div className="text-center py-4">
+                        <p className="text-gray-600">Geen logomatten gevonden voor deze klant.</p>
+                      </div>
+                    )}
                     {logomattenLijst.length > 0 && (
                       <div className="space-y-4">
                         <h4 className="font-medium">Logomatten</h4>
@@ -754,6 +766,11 @@ export default function LavansApp() {
                 )}
 
                 {/* Wissers sectie */}
+                {wissersTabel.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Geen wissers-abonnementen gevonden voor deze klant.</p>
+                  </div>
+                )}
                 {wissersTabel.length > 0 && (
                   <div className="space-y-8">
                     <h2 className="text-2xl font-bold text-blue-900 mb-2 mt-6">2.3 Aantal wissers</h2>
@@ -1025,20 +1042,25 @@ export default function LavansApp() {
                 )}
 
                 {/* Contactpersonen data */}
+                {!contactpersonenLoading && !contactpersonenError && contactpersonenData.length === 0 && (
+                  <div className="text-center py-8">
+                    <p className="text-gray-600">Geen contactpersonen gevonden voor deze klant.</p>
+                  </div>
+                )}
                 {!contactpersonenLoading && !contactpersonenError && contactpersonenData.map((contact, index) => (
                   <div key={index} className="border rounded-lg p-4 space-y-4">
                     <h3 className="font-medium">
-                      {formatNaam(contact.voornaam, contact.tussenvoegsel, contact.achternaam)}
+                      {formatNaam(contact.Voornaam, contact.Tussenvoegsel, contact.Achternaam)}
                     </h3>
                     
                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <Label>Voornaam</Label>
                         <Input
-                          value={contact.voornaam}
+                          value={contact.Voornaam}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].voornaam = e.target.value;
+                            newContacten[index].Voornaam = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1046,10 +1068,10 @@ export default function LavansApp() {
                       <div>
                         <Label>Tussenvoegsel</Label>
                         <Input
-                          value={contact.tussenvoegsel}
+                          value={contact.Tussenvoegsel}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].tussenvoegsel = e.target.value;
+                            newContacten[index].Tussenvoegsel = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1057,10 +1079,10 @@ export default function LavansApp() {
                       <div>
                         <Label>Achternaam</Label>
                         <Input
-                          value={contact.achternaam}
+                          value={contact.Achternaam}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].achternaam = e.target.value;
+                            newContacten[index].Achternaam = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1068,10 +1090,10 @@ export default function LavansApp() {
                       <div>
                         <Label>E-mailadres</Label>
                         <Input
-                          value={contact.email}
+                          value={contact.Email}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].email = e.target.value;
+                            newContacten[index].Email = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1079,10 +1101,10 @@ export default function LavansApp() {
                       <div>
                         <Label>Telefoonnummer</Label>
                         <Input
-                          value={contact.telefoon}
+                          value={contact.Telefoon}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].telefoon = e.target.value;
+                            newContacten[index].Telefoon = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1090,10 +1112,10 @@ export default function LavansApp() {
                       <div>
                         <Label>Klantenportaal gebruikersnaam</Label>
                         <Input
-                          value={contact.klantenportaal}
+                          value={contact.Klantenportaal}
                           onChange={(e) => {
                             const newContacten = [...contactpersonenData];
-                            newContacten[index].klantenportaal = e.target.value;
+                            newContacten[index].Klantenportaal = e.target.value;
                             setContactpersonenData(newContacten);
                           }}
                         />
@@ -1103,10 +1125,10 @@ export default function LavansApp() {
                                          <div className="flex flex-col sm:flex-row gap-4">
                        <div className="flex items-center gap-2">
                          <Checkbox
-                           checked={contact.nog_in_dienst}
+                           checked={contact.Nog_in_dienst}
                            onCheckedChange={(checked) => {
                              const newContacten = [...contactpersonenData];
-                             newContacten[index].nog_in_dienst = checked;
+                             newContacten[index].Nog_in_dienst = checked;
                              setContactpersonenData(newContacten);
                            }}
                          />
@@ -1114,10 +1136,10 @@ export default function LavansApp() {
                        </div>
                        <div className="flex items-center gap-2">
                          <Checkbox
-                           checked={contact.routecontact}
+                           checked={contact.Routecontact}
                            onCheckedChange={(checked) => {
                              const newContacten = [...contactpersonenData];
-                             newContacten[index].routecontact = checked;
+                             newContacten[index].Routecontact = checked;
                              setContactpersonenData(newContacten);
                            }}
                          />
@@ -1130,14 +1152,14 @@ export default function LavansApp() {
                 <Button
                   onClick={() => {
                     const newContact = {
-                      voornaam: "",
-                      tussenvoegsel: "",
-                      achternaam: "",
-                      email: "",
-                      telefoon: "",
-                      klantenportaal: "",
-                      nog_in_dienst: true,
-                      routecontact: false
+                      Voornaam: "",
+                      Tussenvoegsel: "",
+                      Achternaam: "",
+                      Email: "",
+                      Telefoon: "",
+                      Klantenportaal: "",
+                      Nog_in_dienst: true,
+                      Routecontact: false
                     };
                     setContactpersonenData([...contactpersonenData, newContact]);
                   }}
