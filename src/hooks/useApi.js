@@ -16,7 +16,7 @@ export function useKlanten() {
       setLoading(true);
       setError(null);
       const data = await apiService.getKlanten();
-      setKlanten(data.map(k => ({ ...k, Naam: k.Naam, Relatienummer: k.Relatienummer })));
+      setKlanten(data);
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden klanten:', err);
@@ -45,7 +45,7 @@ export function useKlant(relatienummer) {
       setLoading(true);
       setError(null);
       const data = await apiService.getKlant(relatienummer);
-      setKlant(data.map(k => ({ ...k, Naam: k.Naam, Relatienummer: k.Relatienummer })));
+      setKlant(data);
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden klant:', err);
@@ -57,34 +57,7 @@ export function useKlant(relatienummer) {
   return { klant, loading, error, refetch: loadKlant };
 }
 
-// Custom hook voor abonnementen
-export function useAbonnementen(klantRelatienummer) {
-  const [abonnementen, setAbonnementen] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    if (klantRelatienummer) {
-      loadAbonnementen();
-    }
-  }, [klantRelatienummer]);
-
-  const loadAbonnementen = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await apiService.getAbonnementen(klantRelatienummer);
-      setAbonnementen(data);
-    } catch (err) {
-      setError(err.message);
-      console.error('Fout bij laden abonnementen:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { abonnementen, loading, error, refetch: loadAbonnementen };
-}
 
 // Custom hook voor contactpersonen
 export function useContactpersonen(klantRelatienummer) {
@@ -103,7 +76,7 @@ export function useContactpersonen(klantRelatienummer) {
       setLoading(true);
       setError(null);
       const data = await apiService.getContactpersonen(klantRelatienummer);
-      setContactpersonen(data.map(c => ({ ...c, Voornaam: c.Voornaam, Relatienummer: c.Relatienummer })));
+      setContactpersonen(data);
     } catch (err) {
       setError(err.message);
       console.error('Fout bij laden contactpersonen:', err);

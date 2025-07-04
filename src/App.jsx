@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { useKlanten, useAbonnementen, useContactpersonen, useSaveInspectie } from "./hooks/useApi";
+import { useKlanten, useContactpersonen, useSaveInspectie } from "./hooks/useApi";
 
 export default function LavansApp() {
   const [selectedTab, setSelectedTab] = useState("inspectie");
@@ -19,19 +19,30 @@ export default function LavansApp() {
   const [contactpersoon, setContactpersoon] = useState({ naam: "", email: "" });
   const [todoList, setTodoList] = useState([]);
   const [klantenserviceTodoList, setKsTodoList] = useState([]);
-  const [mattenIndex, setMattenIndex] = useState(0);
   const [mattenLijst, setMattenLijst] = useState([]);
   const [logomattenLijst, setLogomattenLijst] = useState([]);
   const [wissersTabel, setWissersTabel] = useState([]);
   const [toebehorenTabel, setToebehorenTabel] = useState([]);
   const [contactpersonenData, setContactpersonenData] = useState([]);
   const [inspecties, setInspecties] = useState([]);
-  const [mattenData, setMattenData] = useState({});
-  const [wissersData, setWissersData] = useState({});
+  const [mattenConcurrenten, setMattenConcurrenten] = useState({
+    andere_mat_aanwezig: "nee",
+    andere_mat_concurrent: "",
+    aantal_concurrent: 0
+  });
+  const [wissersConcurrenten, setWissersConcurrenten] = useState({
+    wissers_concurrent: "nee",
+    wissers_concurrent_toelichting: "",
+    andere_zaken: ""
+  });
+  const [koopMatten, setKoopMatten] = useState(0);
+  const [algemeneOpmerkingen, setAlgemeneOpmerkingen] = useState("");
+  const [klanttevredenheid, setKlanttevredenheid] = useState("");
+  const [vervolgacties, setVervolgacties] = useState("");
+  const [volgendeInspectie, setVolgendeInspectie] = useState("");
 
   // API hooks
   const { klanten, loading: klantenLoading, error: klantenError } = useKlanten();
-  const { abonnementen, loading: abonnementenLoading, error: abonnementenError } = useAbonnementen(relatienummer);
   const { contactpersonen, loading: contactpersonenLoading, error: contactpersonenError } = useContactpersonen(relatienummer);
   const { saveInspectie, saving, error: saveError } = useSaveInspectie();
 
@@ -44,21 +55,16 @@ export default function LavansApp() {
   };
 
   const berekenLeeftijd = (barcode) => {
-    if (!barcode || barcode.toString().length < 7) {
-      return "-";
-    }
+    if (!barcode || barcode.toString().length < 7) return "-";
     try {
       const barcodeStr = barcode.toString().trim();
       if (barcodeStr.length >= 7) {
         const maandDigit = barcodeStr[4];
         const jaarDigits = barcodeStr.slice(5, 7);
-        
         const maand = parseInt(maandDigit);
         const jaar = parseInt(jaarDigits);
         
-        if (maand < 1 || maand > 12) {
-          return `Onbekend (maand ${maand} ongeldig)`;
-        }
+        if (maand < 1 || maand > 12) return `Onbekend (maand ${maand} ongeldig)`;
         
         const volledigJaar = 2000 + jaar;
         const productieDatum = new Date(volledigJaar, maand - 1, 1);
@@ -66,41 +72,18 @@ export default function LavansApp() {
         const leeftijdDagen = Math.floor((vandaag - productieDatum) / (1000 * 60 * 60 * 24));
         const leeftijdMaanden = Math.floor(leeftijdDagen / 30);
         
-        if (leeftijdMaanden < 0) {
-          return "Onbekend (toekomstige datum)";
-        }
+        if (leeftijdMaanden < 0) return "Onbekend (toekomstige datum)";
+        if (leeftijdMaanden < 12) return `${leeftijdMaanden} maanden`;
         
-        if (leeftijdMaanden < 12) {
-          return `${leeftijdMaanden} maanden`;
-        } else {
-          const leeftijdJaren = Math.floor(leeftijdMaanden / 12);
-          const resterendeMaanden = leeftijdMaanden % 12;
-          if (resterendeMaanden === 0) {
-            return `${leeftijdJaren} jaar`;
-          } else {
-            return `${leeftijdJaren} jaar en ${resterendeMaanden} maanden`;
-          }
-        }
-      } else {
-        return "Onbekend (te kort)";
+        const leeftijdJaren = Math.floor(leeftijdMaanden / 12);
+        const resterendeMaanden = leeftijdMaanden % 12;
+        if (resterendeMaanden === 0) return `${leeftijdJaren} jaar`;
+        return `${leeftijdJaren} jaar en ${resterendeMaanden} maanden`;
       }
+      return "Onbekend (te kort)";
     } catch (e) {
       return `Onbekend (fout: ${e})`;
     }
-  };
-
-  const toBool = (val) => {
-    if (typeof val === "boolean") return val;
-    if (typeof val === "string") {
-      const v = val.trim().toLowerCase();
-      return ["true", "ja", "1", "yes"].includes(v);
-    }
-    if (typeof val === "number") return val === 1;
-    return false;
-  };
-
-  const boolToJaNee = (val) => {
-    return val ? "Ja" : "Nee";
   };
 
   const addTodoAction = (text) => {
@@ -202,82 +185,41 @@ export default function LavansApp() {
       const [nr, naam] = selectedKlant.split(" - ");
       setRelatienummer(nr);
       setKlantnaam(naam);
-      
-      // Reset to-do lijsten
       setTodoList([]);
       setKsTodoList([]);
     }
   }, [selectedKlant]);
 
-  // Laad abonnementen data wanneer beschikbaar
+  // Laad mock data wanneer een klant wordt geselecteerd
   useEffect(() => {
-    if (abonnementen && abonnementen.length > 0) {
-      const mattenAbos = abonnementen.filter(a => a.Activiteit === "Matten");
-      const wissersAbos = abonnementen.filter(a => a.Activiteit === "Wissers");
-      
-      // Bouw mattenlijsten
-      const standaardMatten = [];
-      const logoMatten = [];
-      
-      for (const abo of mattenAbos) {
-        const matInfo = {
-          mat_type: abo.Productomschrijving,
-          afdeling: abo.Afdeling || "Algemeen",
-          ligplaats: abo.Ligplaats || "Algemeen",
-          aantal: abo.Aantal || 0,
-          aanwezig: false,
-          schoon_onbeschadigd: true,
-          vuilgraad_label: "",
-          vuilgraad: 1,
-          barcode: abo.Barcode || "",
-          bezoekritme: abo.Bezoekritme || ""
-        };
+    if (relatienummer) {
+      import('./services/mockData.js').then(({ mockApiService }) => {
+        const mattenData = mockApiService.getMattenData(relatienummer);
+        const standaardMatten = mattenData.filter(m => !m.mat_type.toLowerCase().includes('logo'));
+        const logoMatten = mattenData.filter(m => m.mat_type.toLowerCase().includes('logo'));
         
-        if (abo.Productnummer.startsWith("MAT")) {
-          if (abo.Productomschrijving.toLowerCase().includes("logo")) {
-            logoMatten.push(matInfo);
-          } else {
-            standaardMatten.push(matInfo);
-          }
-        }
-      }
-      
-      setMattenLijst(standaardMatten);
-      setLogomattenLijst(logoMatten);
-      
-      // Bouw wissers tabel
-      const wissers = wissersAbos.map(abo => ({
-        "Type wisser": abo.Productomschrijving,
-        "Aantal aanwezig": 0,
-        "Waarvan gebruikt": 0,
-        "Vuil percentage": null,
-        "In goede staat": true,
-        "Opmerking": ""
-      }));
-      setWissersTabel(wissers);
-      
-      // Bouw toebehoren tabel
-      const toebehoren = wissersAbos.map(abo => ({
-        "Type accessoire": abo.Productomschrijving,
-        "Vervangen": false,
-        "Aantal": 0,
-        "Opmerking": ""
-      }));
-      setToebehorenTabel(toebehoren);
+        setMattenLijst(standaardMatten);
+        setLogomattenLijst(logoMatten);
+        
+        const wissersData = mockApiService.getWissersData(relatienummer);
+        setWissersTabel(wissersData);
+        
+        const toebehorenData = mockApiService.getToebehorenData(relatienummer);
+        setToebehorenTabel(toebehorenData);
+      });
     }
-  }, [abonnementen]);
+  }, [relatienummer]);
 
   // Laad contactpersonen data wanneer beschikbaar
   useEffect(() => {
     if (contactpersonen && contactpersonen.length > 0) {
       setContactpersonenData(contactpersonen);
       
-      // Zoek routecontact
-      const routecontact = contactpersonen.find(c => c.Routecontact);
-      if (routecontact) {
+      if (contactpersonen.length > 0) {
+        const firstContact = contactpersonen[0];
         setContactpersoon({
-          naam: formatNaam(routecontact.Voornaam, routecontact.Tussenvoegsel, routecontact.Achternaam),
-          email: routecontact.Email
+          naam: formatNaam(firstContact.voornaam, firstContact.tussenvoegsel, firstContact.achternaam),
+          email: firstContact.email
         });
       }
     }
@@ -302,10 +244,8 @@ export default function LavansApp() {
 
   const handleSaveInspectie = async () => {
     try {
-      // Genereer to-do's
       genereerTodoList();
       
-      // Bereid inspectie data voor
       const inspectieData = {
         relatienummer,
         klantnaam,
@@ -314,11 +254,25 @@ export default function LavansApp() {
         inspecteur,
         datum: inspectieDatum,
         tijd: inspectieTijd,
-        matten_data: { matten_lijst: mattenLijst, logomatten_lijst: logomattenLijst },
-        wissers_data: { wissers_tabel: wissersTabel, toebehoren_tabel: toebehorenTabel }
+        matten_data: { 
+          matten_lijst: mattenLijst, 
+          logomatten_lijst: logomattenLijst,
+          concurrenten: mattenConcurrenten,
+          koop_matten: koopMatten
+        },
+        wissers_data: { 
+          wissers_tabel: wissersTabel, 
+          toebehoren_tabel: toebehorenTabel,
+          concurrenten: wissersConcurrenten
+        },
+        feedback_data: {
+          algemene_opmerkingen: algemeneOpmerkingen,
+          klanttevredenheid,
+          vervolgacties,
+          volgende_inspectie: volgendeInspectie
+        }
       };
       
-      // Sla op via API
       await saveInspectie(inspectieData);
       alert("Inspectie succesvol opgeslagen!");
       
@@ -329,865 +283,1024 @@ export default function LavansApp() {
   };
 
   return (
-    <div className="p-2 sm:p-4 max-w-6xl mx-auto">
-      <h1 className="text-xl sm:text-2xl font-bold text-blue-900 mb-4">Lavans Service App</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">L</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900">Lavans Service App</h1>
+                <p className="text-sm text-gray-500">Inspectie & Service Management</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="text-right">
+                <p className="text-sm font-medium text-gray-900">
+                  {new Date().toLocaleDateString('nl-NL', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {new Date().toLocaleTimeString('nl-NL', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
 
-      {/* Klantselectie */}
-      <div className="mb-4 sm:mb-6">
-        <Label htmlFor="klant-select">Selecteer Klant</Label>
-        <select
-          id="klant-select"
-          value={selectedKlant}
-          onChange={(e) => setSelectedKlant(e.target.value)}
-          className="w-full p-3 sm:p-2 border rounded-md text-base"
-          disabled={klantenLoading}
-        >
-          <option value="">{klantenLoading ? "Laden..." : "Kies een klant..."}</option>
-          {klanten.map(klant => (
-            <option key={klant.Relatienummer} value={`${klant.Relatienummer} - ${klant.Naam}`}>
-              {klant.Relatienummer} - {klant.Naam}
-            </option>
-          ))}
-        </select>
-        {klantenError && (
-          <p className="text-red-500 text-sm mt-1">Fout bij laden klanten: {klantenError}</p>
-        )}
-      </div>
-
-      {selectedKlant && (
-        <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-4 gap-1">
-            <TabsTrigger value="inspectie" className="text-xs sm:text-sm">📝 Inspectie</TabsTrigger>
-            <TabsTrigger value="todo" className="text-xs sm:text-sm">📝 To-do</TabsTrigger>
-            <TabsTrigger value="contact" className="text-xs sm:text-sm">👤 Contact</TabsTrigger>
-            <TabsTrigger value="rapportage" className="text-xs sm:text-sm">📊 Rapport</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="inspectie">
-            <Card>
-              <CardContent className="space-y-4 pt-6">
-                <h2 className="text-xl font-semibold">Inspectieformulier</h2>
-                
-                {/* Basis gegevens */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="inspecteur">Inspecteur</Label>
-                    <Input
-                      id="inspecteur"
-                      value={inspecteur}
-                      onChange={(e) => setInspecteur(e.target.value)}
-                    />
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Klantselectie */}
+        <div className="mb-6">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Klant Selectie</h2>
+                <p className="text-sm text-gray-600">Selecteer een klant om de inspectie te starten</p>
+              </div>
+              {selectedKlant && (
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-green-600 font-medium">Klant geselecteerd</span>
+                </div>
+              )}
+            </div>
+            
+            <div className="relative">
+              <select
+                value={selectedKlant}
+                onChange={(e) => setSelectedKlant(e.target.value)}
+                className="w-full p-4 border border-gray-300 rounded-lg text-base bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                disabled={klantenLoading}
+              >
+                <option value="">{klantenLoading ? "🔄 Laden..." : "📋 Kies een klant..."}</option>
+                {klanten.map(klant => (
+                  <option key={klant.relatienummer} value={`${klant.relatienummer} - ${klant.bedrijfsnaam}`}>
+                    {klant.relatienummer} - {klant.bedrijfsnaam}
+                  </option>
+                ))}
+              </select>
+              
+              {klantenLoading && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                </div>
+              )}
+            </div>
+            
+            {klantenError && (
+              <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md">
+                <p className="text-red-600 text-sm">❌ Fout bij laden klanten: {klantenError}</p>
+              </div>
+            )}
+            
+            {selectedKlant && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-bold">✓</span>
                   </div>
                   <div>
-                    <Label htmlFor="datum">Datum</Label>
-                    <Input
-                      id="datum"
-                      type="date"
-                      value={inspectieDatum}
-                      onChange={(e) => setInspectieDatum(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="tijd">Tijd</Label>
-                    <Input
-                      id="tijd"
-                      type="time"
-                      value={inspectieTijd}
-                      onChange={(e) => setInspectieTijd(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="contact">Contactpersoon</Label>
-                    <Input
-                      id="contact"
-                      value={contactpersoon.naam}
-                      disabled
-                    />
+                    <p className="font-medium text-blue-900">Geselecteerde klant</p>
+                    <p className="text-sm text-blue-700">{selectedKlant}</p>
                   </div>
                 </div>
+              </div>
+            )}
+          </div>
+        </div>
 
-                {/* Loading state */}
-                {abonnementenLoading && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-600">Laden van abonnementen...</p>
-                  </div>
-                )}
+        {selectedKlant && (
+          <div className="space-y-6">
+            {/* Tab Navigation */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+              <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-100 p-1 rounded-lg">
+                  <TabsTrigger 
+                    value="inspectie" 
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-600"
+                  >
+                    <span className="flex items-center space-x-2">
+                      <span>📝</span>
+                      <span className="hidden sm:inline">Inspectie</span>
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="todo" 
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-600"
+                  >
+                    <span className="flex items-center space-x-2">
+                      <span>✅</span>
+                      <span className="hidden sm:inline">To-do</span>
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="contact" 
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-600"
+                  >
+                    <span className="flex items-center space-x-2">
+                      <span>👤</span>
+                      <span className="hidden sm:inline">Contact</span>
+                    </span>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="rapportage" 
+                    className="text-sm font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-blue-600"
+                  >
+                    <span className="flex items-center space-x-2">
+                      <span>📊</span>
+                      <span className="hidden sm:inline">Rapport</span>
+                    </span>
+                  </TabsTrigger>
+                </TabsList>
 
-                {/* Error state */}
-                {abonnementenError && (
-                  <div className="text-center py-8">
-                    <p className="text-red-500">Fout bij laden abonnementen: {abonnementenError}</p>
-                  </div>
-                )}
-
-                {/* Matten sectie */}
-                {!abonnementenLoading && !abonnementenError && mattenLijst.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-600">Geen matten-abonnementen gevonden voor deze klant.</p>
-                  </div>
-                )}
-                {!abonnementenLoading && !abonnementenError && mattenLijst.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold">Matten Inspectie</h3>
-                    
-                    {/* Concurrent matten */}
-                    <div className="space-y-2">
-                      <Label>Zien we matten van de concurrent liggen?</Label>
-                                           <div className="flex flex-col sm:flex-row gap-4">
-                       <label className="flex items-center gap-2">
-                         <input 
-                           type="radio" 
-                           name="concurrent" 
-                           value="nee" 
-                           defaultChecked 
-                           onChange={(e) => {
-                             if (e.target.checked) {
-                               setMattenData(prev => ({ ...prev, andere_mat_aanwezig: "Nee" }));
-                             }
-                           }}
-                           className="w-5 h-5"
-                         />
-                         Nee
-                       </label>
-                       <label className="flex items-center gap-2">
-                         <input 
-                           type="radio" 
-                           name="concurrent" 
-                           value="ja" 
-                           onChange={(e) => {
-                             if (e.target.checked) {
-                               setMattenData(prev => ({ ...prev, andere_mat_aanwezig: "Ja" }));
-                             }
-                           }}
-                           className="w-5 h-5"
-                         />
-                         Ja
-                       </label>
-                     </div>
+                <TabsContent value="inspectie">
+                  <Card>
+                    <CardContent className="space-y-6 pt-6">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-semibold">Inspectieformulier</h2>
+                        <Button 
+                          onClick={handleSaveInspectie} 
+                          disabled={saving}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          {saving ? "🔄 Opslaan..." : "💾 Inspectie Opslaan"}
+                        </Button>
+                      </div>
                       
-                      {mattenData?.andere_mat_aanwezig === "Ja" && (
-                        <div className="ml-6 space-y-2">
-                          <Label>Van welke concurrent?</Label>
-                          <select 
-                            className="w-full p-2 border rounded-md"
-                            onChange={(e) => {
-                              if (e.target.value === "Anders namelijk:") {
-                                setMattenData(prev => ({ ...prev, andere_mat_concurrent: "Anders" }));
-                              } else {
-                                setMattenData(prev => ({ ...prev, andere_mat_concurrent: e.target.value }));
-                              }
-                            }}
-                          >
-                            <option value="">Selecteer concurrent...</option>
-                            <option value="CWS">CWS</option>
-                            <option value="ELIS">ELIS</option>
-                            <option value="Quality Service">Quality Service</option>
-                            <option value="Vendrig">Vendrig</option>
-                            <option value="Mewa">Mewa</option>
-                            <option value="Anders namelijk:">Anders namelijk:</option>
-                          </select>
-                          
-                          {mattenData?.andere_mat_concurrent === "Anders" && (
-                            <Input
-                              placeholder="Welke andere concurrent?"
-                              onChange={(e) => {
-                                setMattenData(prev => ({ ...prev, andere_mat_concurrent: e.target.value }));
-                              }}
-                            />
-                          )}
-                          
-                          <div>
-                            <Label>Aantal matten van concurrent</Label>
-                            <Input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              onChange={(e) => {
-                                setMattenData(prev => ({ ...prev, aantal_concurrent: parseInt(e.target.value) || 0 }));
-                              }}
-                            />
-                          </div>
+                      {/* Basis gegevens */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                          <Label htmlFor="inspecteur">Inspecteur</Label>
+                          <Input
+                            id="inspecteur"
+                            value={inspecteur}
+                            onChange={(e) => setInspecteur(e.target.value)}
+                            placeholder="Naam inspecteur"
+                          />
                         </div>
-                      )}
-                    </div>
+                        <div>
+                          <Label htmlFor="datum">Datum</Label>
+                          <Input
+                            id="datum"
+                            type="date"
+                            value={inspectieDatum}
+                            onChange={(e) => setInspectieDatum(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="tijd">Tijd</Label>
+                          <Input
+                            id="tijd"
+                            type="time"
+                            value={inspectieTijd}
+                            onChange={(e) => setInspectieTijd(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="contact">Contactpersoon</Label>
+                          <Input
+                            id="contact"
+                            value={contactpersoon.naam}
+                            onChange={(e) => setContactpersoon({...contactpersoon, naam: e.target.value})}
+                            placeholder="Naam contactpersoon"
+                          />
+                        </div>
+                      </div>
 
-                                         {/* Standaard matten carrousel */}
-                     <div className="space-y-4">
-                       <h4 className="font-medium">Standaard Matten</h4>
-                       {mattenLijst.length > 0 && (
-                         <div className="border rounded-lg p-4">
-                           <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-2">
-                             <span className="font-medium text-center sm:text-left">Mat {mattenIndex + 1} van {mattenLijst.length}</span>
-                             <div className="flex gap-2">
-                               <Button
-                                 variant="outline"
-                                 size="sm"
-                                 onClick={() => setMattenIndex(Math.max(0, mattenIndex - 1))}
-                                 disabled={mattenIndex === 0}
-                                 className="min-w-[80px]"
-                               >
-                                 ← Vorige
-                               </Button>
-                               <Button
-                                 variant="outline"
-                                 size="sm"
-                                 onClick={() => setMattenIndex(Math.min(mattenLijst.length - 1, mattenIndex + 1))}
-                                 disabled={mattenIndex === mattenLijst.length - 1}
-                                 className="min-w-[80px]"
-                               >
-                                 Volgende →
-                               </Button>
+                                            {/* Concurrenten Matten */}
+                      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                        <h4 className="font-medium mb-3">Concurrenten Matten</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <Label>Zien we matten van de concurrent liggen?</Label>
+                            <div className="flex flex-col sm:flex-row gap-4 mt-2">
+                              <label className="flex items-center gap-2">
+                                <input 
+                                  type="radio" 
+                                  name="concurrent" 
+                                  value="nee" 
+                                  checked={mattenConcurrenten.andere_mat_aanwezig === "nee"}
+                                  onChange={(e) => {
+                                    setMattenConcurrenten(prev => ({ ...prev, andere_mat_aanwezig: e.target.value }));
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                Nee
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <input 
+                                  type="radio" 
+                                  name="concurrent" 
+                                  value="ja" 
+                                  checked={mattenConcurrenten.andere_mat_aanwezig === "ja"}
+                                  onChange={(e) => {
+                                    setMattenConcurrenten(prev => ({ ...prev, andere_mat_aanwezig: e.target.value }));
+                                  }}
+                                  className="w-4 h-4"
+                                />
+                                Ja
+                              </label>
+                            </div>
+                          </div>
+                          
+                          {mattenConcurrenten.andere_mat_aanwezig === "ja" && (
+                            <div className="space-y-3 pl-4 border-l-2 border-yellow-300">
+                              <div>
+                                <Label>Van welke concurrent?</Label>
+                                <select
+                                  value={mattenConcurrenten.andere_mat_concurrent}
+                                  onChange={(e) => {
+                                    setMattenConcurrenten(prev => ({ 
+                                      ...prev, 
+                                      andere_mat_concurrent: e.target.value 
+                                    }));
+                                  }}
+                                  className="w-full p-2 border border-gray-300 rounded-md mt-1"
+                                >
+                                  <option value="">Selecteer concurrent...</option>
+                                  <option value="CWS">CWS</option>
+                                  <option value="ELIS">ELIS</option>
+                                  <option value="Quality Service">Quality Service</option>
+                                  <option value="Vendrig">Vendrig</option>
+                                  <option value="Mewa">Mewa</option>
+                                  <option value="Anders">Anders namelijk:</option>
+                                </select>
+                                
+                                {mattenConcurrenten.andere_mat_concurrent === "Anders" && (
+                                  <Input
+                                    placeholder="Welke andere concurrent?"
+                                    value={mattenConcurrenten.andere_mat_concurrent}
+                                    onChange={(e) => {
+                                      setMattenConcurrenten(prev => ({ 
+                                        ...prev, 
+                                        andere_mat_concurrent: e.target.value 
+                                      }));
+                                    }}
+                                    className="mt-2"
+                                  />
+                                )}
+                              </div>
+                              
+                              <div>
+                                <Label>Aantal matten van concurrent</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  placeholder="0"
+                                  value={mattenConcurrenten.aantal_concurrent}
+                                  onChange={(e) => {
+                                    setMattenConcurrenten(prev => ({ 
+                                      ...prev, 
+                                      aantal_concurrent: parseInt(e.target.value) || 0 
+                                    }));
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Koop Matten */}
+                      <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                        <h4 className="font-medium mb-3">Koop Matten</h4>
+                        <div>
+                          <Label>Aantal koop matten</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={koopMatten}
+                            onChange={(e) => setKoopMatten(parseInt(e.target.value) || 0)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Matten Sectie */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium text-gray-900">Matten Overzicht</h3>
+                        
+                        {/* Standaard Matten */}
+                        {mattenLijst.length > 0 && (
+                          <div className="bg-gray-50 rounded-lg p-4">
+                            <h4 className="font-medium mb-3">Standaard Matten</h4>
+                            <div className="space-y-3">
+                              {mattenLijst.map((mat, index) => (
+                                <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h5 className="font-medium">{mat.mat_type}</h5>
+                                    <span className="text-sm text-gray-500">{mat.afdeling} - {mat.ligplaats}</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div>
+                                      <Label>Aantal</Label>
+                                      <Input
+                                        type="number"
+                                        value={mat.aantal}
+                                        onChange={(e) => {
+                                          const updated = [...mattenLijst];
+                                          updated[index].aantal = parseInt(e.target.value) || 0;
+                                          setMattenLijst(updated);
+                                        }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Aanwezig</Label>
+                                      <select
+                                        value={mat.aanwezig ? "ja" : "nee"}
+                                        onChange={(e) => {
+                                          const updated = [...mattenLijst];
+                                          updated[index].aanwezig = e.target.value === "ja";
+                                          setMattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="ja">Ja</option>
+                                        <option value="nee">Nee</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Vuilgraad</Label>
+                                      <select
+                                        value={mat.vuilgraad_label || ""}
+                                        onChange={(e) => {
+                                          const updated = [...mattenLijst];
+                                          updated[index].vuilgraad_label = e.target.value;
+                                          setMattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="">Selecteer</option>
+                                        <option value="Schoon">Schoon</option>
+                                        <option value="Licht vervuild">Licht vervuild</option>
+                                        <option value="Vervuild">Vervuild</option>
+                                        <option value="Sterk vervuild">Sterk vervuild</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Schoon & Onbeschadigd</Label>
+                                      <select
+                                        value={mat.schoon_onbeschadigd ? "ja" : "nee"}
+                                        onChange={(e) => {
+                                          const updated = [...mattenLijst];
+                                          updated[index].schoon_onbeschadigd = e.target.value === "ja";
+                                          setMattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="ja">Ja</option>
+                                        <option value="nee">Nee</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3">
+                                    <Label>Opmerking</Label>
+                                    <Input
+                                      value={mat.opmerking || ""}
+                                      onChange={(e) => {
+                                        const updated = [...mattenLijst];
+                                        updated[index].opmerking = e.target.value;
+                                        setMattenLijst(updated);
+                                      }}
+                                      placeholder="Optionele opmerking"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Logo Matten */}
+                        {logomattenLijst.length > 0 && (
+                          <div className="bg-blue-50 rounded-lg p-4">
+                            <h4 className="font-medium mb-3">Logo Matten</h4>
+                            <div className="space-y-3">
+                              {logomattenLijst.map((mat, index) => (
+                                <div key={index} className="bg-white rounded-lg p-4 border border-blue-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <h5 className="font-medium">{mat.mat_type}</h5>
+                                    <span className="text-sm text-blue-600">{mat.afdeling} - {mat.ligplaats}</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                    <div>
+                                      <Label>Barcode</Label>
+                                      <Input
+                                        value={mat.barcode || ""}
+                                        onChange={(e) => {
+                                          const updated = [...logomattenLijst];
+                                          updated[index].barcode = e.target.value;
+                                          setLogomattenLijst(updated);
+                                        }}
+                                        placeholder="Scan barcode"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Leeftijd</Label>
+                                      <Input
+                                        value={mat.barcode ? berekenLeeftijd(mat.barcode) : "-"}
+                                        disabled
+                                        className="bg-gray-50"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Aantal</Label>
+                                      <Input
+                                        type="number"
+                                        value={mat.aantal}
+                                        onChange={(e) => {
+                                          const updated = [...logomattenLijst];
+                                          updated[index].aantal = parseInt(e.target.value) || 0;
+                                          setLogomattenLijst(updated);
+                                        }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label>Aanwezig</Label>
+                                      <select
+                                        value={mat.aanwezig ? "ja" : "nee"}
+                                        onChange={(e) => {
+                                          const updated = [...logomattenLijst];
+                                          updated[index].aanwezig = e.target.value === "ja";
+                                          setLogomattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="ja">Ja</option>
+                                        <option value="nee">Nee</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Vuilgraad</Label>
+                                      <select
+                                        value={mat.vuilgraad_label || ""}
+                                        onChange={(e) => {
+                                          const updated = [...logomattenLijst];
+                                          updated[index].vuilgraad_label = e.target.value;
+                                          setLogomattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="">Selecteer</option>
+                                        <option value="Schoon">Schoon</option>
+                                        <option value="Licht vervuild">Licht vervuild</option>
+                                        <option value="Vervuild">Vervuild</option>
+                                        <option value="Sterk vervuild">Sterk vervuild</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <Label>Schoon & Onbeschadigd</Label>
+                                      <select
+                                        value={mat.schoon_onbeschadigd ? "ja" : "nee"}
+                                        onChange={(e) => {
+                                          const updated = [...logomattenLijst];
+                                          updated[index].schoon_onbeschadigd = e.target.value === "ja";
+                                          setLogomattenLijst(updated);
+                                        }}
+                                        className="w-full p-2 border border-gray-300 rounded-md"
+                                      >
+                                        <option value="ja">Ja</option>
+                                        <option value="nee">Nee</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3">
+                                    <Label>Opmerking</Label>
+                                    <Input
+                                      value={mat.opmerking || ""}
+                                      onChange={(e) => {
+                                        const updated = [...logomattenLijst];
+                                        updated[index].opmerking = e.target.value;
+                                        setLogomattenLijst(updated);
+                                      }}
+                                      placeholder="Optionele opmerking"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                       {/* Concurrenten Wissers */}
+                       <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                         <h4 className="font-medium mb-3">Concurrenten Wissers</h4>
+                         <div className="space-y-4">
+                           <div>
+                             <Label>Zien we wissers van concurrenten staan?</Label>
+                             <div className="flex flex-col sm:flex-row gap-4 mt-2">
+                               <label className="flex items-center gap-2">
+                                 <input 
+                                   type="radio" 
+                                   name="wissers_concurrent" 
+                                   value="nee" 
+                                   checked={wissersConcurrenten.wissers_concurrent === "nee"}
+                                   onChange={(e) => {
+                                     setWissersConcurrenten(prev => ({ ...prev, wissers_concurrent: e.target.value }));
+                                   }}
+                                   className="w-4 h-4"
+                                 />
+                                 Nee
+                               </label>
+                               <label className="flex items-center gap-2">
+                                 <input 
+                                   type="radio" 
+                                   name="wissers_concurrent" 
+                                   value="ja" 
+                                   checked={wissersConcurrenten.wissers_concurrent === "ja"}
+                                   onChange={(e) => {
+                                     setWissersConcurrenten(prev => ({ ...prev, wissers_concurrent: e.target.value }));
+                                   }}
+                                   className="w-4 h-4"
+                                 />
+                                 Ja
+                               </label>
                              </div>
                            </div>
                            
-                           {mattenLijst[mattenIndex] && (
-                             <div className="space-y-4">
-                               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                           {wissersConcurrenten.wissers_concurrent === "ja" && (
+                             <div className="space-y-3 pl-4 border-l-2 border-orange-300">
+                               <div>
+                                 <Label>Welke concurrent(en)?</Label>
+                                 <Input
+                                   placeholder="Bijv. CWS, ELIS, etc."
+                                   value={wissersConcurrenten.wissers_concurrent_toelichting}
+                                   onChange={(e) => {
+                                     setWissersConcurrenten(prev => ({ 
+                                       ...prev, 
+                                       wissers_concurrent_toelichting: e.target.value 
+                                     }));
+                                   }}
+                                 />
+                               </div>
+                             </div>
+                           )}
+                           
+                           <div>
+                             <Label>Andere schoonmaakmiddelen</Label>
+                             <textarea
+                               className="w-full p-3 border border-gray-300 rounded-md"
+                               rows={3}
+                               placeholder="Zie je andere schoonmaakmiddelen staan? (Bezems, wissers van andere leveranciers, etc.)"
+                               value={wissersConcurrenten.andere_zaken}
+                               onChange={(e) => {
+                                 setWissersConcurrenten(prev => ({ 
+                                   ...prev, 
+                                   andere_zaken: e.target.value 
+                                 }));
+                               }}
+                             />
+                           </div>
+                         </div>
+                       </div>
+
+                       {/* Wissers Sectie */}
+                       <div className="space-y-4">
+                         <h3 className="text-lg font-medium text-gray-900">Wissers Overzicht</h3>
+                         <div className="space-y-3">
+                           {wissersTabel.map((wisser, index) => (
+                             <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                               <div className="flex items-center justify-between mb-3">
+                                 <h4 className="font-medium">{wisser["Type wisser"]}</h4>
+                               </div>
+                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                                  <div>
-                                   <Label>Productomschrijving</Label>
-                                   <Input value={mattenLijst[mattenIndex].mat_type} disabled />
+                                   <Label>Aantal aanwezig</Label>
+                                   <Input
+                                     type="number"
+                                     value={wisser["Aantal aanwezig"]}
+                                     onChange={(e) => {
+                                       const updated = [...wissersTabel];
+                                       updated[index]["Aantal aanwezig"] = parseInt(e.target.value) || 0;
+                                       setWissersTabel(updated);
+                                     }}
+                                   />
+                                 </div>
+                                 <div>
+                                   <Label>Vuil percentage</Label>
+                                   <Input
+                                     type="number"
+                                     value={wisser["Vuil percentage"] || ""}
+                                     onChange={(e) => {
+                                       const updated = [...wissersTabel];
+                                       updated[index]["Vuil percentage"] = parseInt(e.target.value) || null;
+                                       setWissersTabel(updated);
+                                     }}
+                                     placeholder="0-100"
+                                   />
+                                 </div>
+                                 <div>
+                                   <Label>In goede staat</Label>
+                                   <select
+                                     value={wisser["In goede staat"] ? "ja" : "nee"}
+                                     onChange={(e) => {
+                                       const updated = [...wissersTabel];
+                                       updated[index]["In goede staat"] = e.target.value === "ja";
+                                       setWissersTabel(updated);
+                                     }}
+                                     className="w-full p-2 border border-gray-300 rounded-md"
+                                   >
+                                     <option value="ja">Ja</option>
+                                     <option value="nee">Nee</option>
+                                   </select>
+                                 </div>
+                                 <div>
+                                   <Label>Opmerking</Label>
+                                   <Input
+                                     value={wisser.Opmerking || ""}
+                                     onChange={(e) => {
+                                       const updated = [...wissersTabel];
+                                       updated[index].Opmerking = e.target.value;
+                                       setWissersTabel(updated);
+                                     }}
+                                     placeholder="Optionele opmerking"
+                                   />
+                                 </div>
+                               </div>
+                             </div>
+                           ))}
+                         </div>
+                       </div>
+
+                       {/* Toebehoren Sectie */}
+                       <div className="space-y-4">
+                         <h3 className="text-lg font-medium text-gray-900">Toebehoren</h3>
+                         <div className="space-y-3">
+                           {toebehorenTabel.map((toebehoren, index) => (
+                             <div key={index} className="bg-white rounded-lg p-4 border border-gray-200">
+                               <div className="flex items-center justify-between mb-3">
+                                 <h4 className="font-medium">{toebehoren["Type accessoire"]}</h4>
+                               </div>
+                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                                 <div>
+                                   <Label>Vervangen</Label>
+                                   <select
+                                     value={toebehoren.Vervangen ? "ja" : "nee"}
+                                     onChange={(e) => {
+                                       const updated = [...toebehorenTabel];
+                                       updated[index].Vervangen = e.target.value === "ja";
+                                       setToebehorenTabel(updated);
+                                     }}
+                                     className="w-full p-2 border border-gray-300 rounded-md"
+                                   >
+                                     <option value="ja">Ja</option>
+                                     <option value="nee">Nee</option>
+                                   </select>
                                  </div>
                                  <div>
                                    <Label>Aantal</Label>
                                    <Input
                                      type="number"
-                                     value={mattenLijst[mattenIndex].aantal}
+                                     value={toebehoren.Aantal || 0}
                                      onChange={(e) => {
-                                       const newMatten = [...mattenLijst];
-                                       newMatten[mattenIndex].aantal = parseInt(e.target.value) || 0;
-                                       setMattenLijst(newMatten);
+                                       const updated = [...toebehorenTabel];
+                                       updated[index].Aantal = parseInt(e.target.value) || 0;
+                                       setToebehorenTabel(updated);
                                      }}
                                    />
                                  </div>
                                  <div>
-                                   <Label>Afdeling</Label>
+                                   <Label>Opmerking</Label>
                                    <Input
-                                     value={mattenLijst[mattenIndex].afdeling}
+                                     value={toebehoren.Opmerking || ""}
                                      onChange={(e) => {
-                                       const newMatten = [...mattenLijst];
-                                       newMatten[mattenIndex].afdeling = e.target.value;
-                                       setMattenLijst(newMatten);
+                                       const updated = [...toebehorenTabel];
+                                       updated[index].Opmerking = e.target.value;
+                                       setToebehorenTabel(updated);
                                      }}
-                                   />
-                                 </div>
-                                 <div>
-                                   <Label>Ligplaats</Label>
-                                   <Input
-                                     value={mattenLijst[mattenIndex].ligplaats}
-                                     onChange={(e) => {
-                                       const newMatten = [...mattenLijst];
-                                       newMatten[mattenIndex].ligplaats = e.target.value;
-                                       setMattenLijst(newMatten);
-                                     }}
+                                     placeholder="Optionele opmerking"
                                    />
                                  </div>
                                </div>
-                               
-                               <div className="flex items-center gap-2">
-                                 <Checkbox
-                                   checked={mattenLijst[mattenIndex].aanwezig}
-                                   onCheckedChange={(checked) => {
-                                     const newMatten = [...mattenLijst];
-                                     newMatten[mattenIndex].aanwezig = checked;
-                                     setMattenLijst(newMatten);
-                                   }}
-                                 />
-                                 <Label>Aanwezig</Label>
-                               </div>
-                               
-                               <div>
-                                 <Label>Vuilgraad</Label>
-                                 <select
-                                   value={mattenLijst[mattenIndex].vuilgraad_label}
-                                   onChange={(e) => {
-                                     const newMatten = [...mattenLijst];
-                                     newMatten[mattenIndex].vuilgraad_label = e.target.value;
-                                     setMattenLijst(newMatten);
-                                   }}
-                                   className="w-full p-2 border rounded-md"
-                                 >
-                                   <option value="">Selecteer...</option>
-                                   <option value="Schoon">Schoon</option>
-                                   <option value="Licht vervuild">Licht vervuild</option>
-                                   <option value="Sterk vervuild">Sterk vervuild</option>
-                                 </select>
-                               </div>
-                               
-                               <div>
-                                 <Label>Opmerking</Label>
-                                 <textarea
-                                   className="w-full p-2 border rounded-md"
-                                   rows={2}
-                                   placeholder="Eventuele opmerkingen..."
-                                   value={mattenLijst[mattenIndex].opmerking || ""}
-                                   onChange={(e) => {
-                                     const newMatten = [...mattenLijst];
-                                     newMatten[mattenIndex].opmerking = e.target.value;
-                                     setMattenLijst(newMatten);
-                                   }}
-                                 />
-                               </div>
                              </div>
-                           )}
-                           
-                           {/* Navigatie dots */}
-                           {mattenLijst.length > 1 && (
-                             <div className="flex justify-center gap-3 mt-4">
-                               {mattenLijst.map((_, index) => (
-                                 <button
-                                   key={index}
-                                   onClick={() => setMattenIndex(index)}
-                                   className={`w-4 h-4 sm:w-3 sm:h-3 rounded-full touch-manipulation ${
-                                     index === mattenIndex ? 'bg-blue-600' : 'bg-gray-300'
-                                   }`}
-                                 />
-                               ))}
-                             </div>
-                           )}
+                           ))}
                          </div>
-                       )}
-                     </div>
-                     
-                     {/* Koop matten */}
-                     <div className="space-y-2">
-                       <Label>Aantal koop matten</Label>
-                       <Input
-                         type="number"
-                         min="0"
-                         placeholder="0"
-                         onChange={(e) => {
-                           setMattenData(prev => ({ ...prev, aantal_koop: parseInt(e.target.value) || 0 }));
-                         }}
-                       />
-                     </div>
-
-                    {/* Logomatten */}
-                    {logomattenLijst.length === 0 && (
-                      <div className="text-center py-4">
-                        <p className="text-gray-600">Geen logomatten gevonden voor deze klant.</p>
-                      </div>
-                    )}
-                    {logomattenLijst.length > 0 && (
-                      <div className="space-y-4">
-                        <h4 className="font-medium">Logomatten</h4>
-                        {logomattenLijst.map((mat, index) => (
-                          <div key={index} className="border rounded-lg p-4 space-y-4">
-                            <h5 className="font-medium">Logomat {index + 1}</h5>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div>
-                                <Label>Productomschrijving</Label>
-                                <Input value={mat.mat_type} disabled />
-                              </div>
-                              <div>
-                                <Label>Barcode</Label>
-                                <Input
-                                  value={mat.barcode}
-                                  onChange={(e) => {
-                                    const newLogoMatten = [...logomattenLijst];
-                                    newLogoMatten[index].barcode = e.target.value;
-                                    setLogomattenLijst(newLogoMatten);
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <Label>Leeftijd</Label>
-                                <Input value={berekenLeeftijd(mat.barcode)} disabled />
-                              </div>
-                              <div>
-                                <Label>Aantal</Label>
-                                <Input
-                                  type="number"
-                                  value={mat.aantal}
-                                  onChange={(e) => {
-                                    const newLogoMatten = [...logomattenLijst];
-                                    newLogoMatten[index].aantal = parseInt(e.target.value) || 0;
-                                    setLogomattenLijst(newLogoMatten);
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <Label>Afdeling</Label>
-                                <Input
-                                  value={mat.afdeling}
-                                  onChange={(e) => {
-                                    const newLogoMatten = [...logomattenLijst];
-                                    newLogoMatten[index].afdeling = e.target.value;
-                                    setLogomattenLijst(newLogoMatten);
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <Label>Ligplaats</Label>
-                                <Input
-                                  value={mat.ligplaats}
-                                  onChange={(e) => {
-                                    const newLogoMatten = [...logomattenLijst];
-                                    newLogoMatten[index].ligplaats = e.target.value;
-                                    setLogomattenLijst(newLogoMatten);
-                                  }}
-                                />
-                              </div>
-                              <div className="col-span-2">
-                                <div className="flex items-center gap-2">
-                                  <Checkbox
-                                    checked={mat.aanwezig}
-                                    onCheckedChange={(checked) => {
-                                      const newLogoMatten = [...logomattenLijst];
-                                      newLogoMatten[index].aanwezig = checked;
-                                      setLogomattenLijst(newLogoMatten);
-                                    }}
-                                  />
-                                  <Label>Aanwezig</Label>
-                                </div>
-                              </div>
-                              <div>
-                                <Label>Vuilgraad</Label>
-                                <select
-                                  value={mat.vuilgraad_label}
-                                  onChange={(e) => {
-                                    const newLogoMatten = [...logomattenLijst];
-                                    newLogoMatten[index].vuilgraad_label = e.target.value;
-                                    setLogomattenLijst(newLogoMatten);
-                                  }}
-                                  className="w-full p-2 border rounded-md"
-                                >
-                                  <option value="">Selecteer...</option>
-                                  <option value="Schoon">Schoon</option>
-                                  <option value="Licht vervuild">Licht vervuild</option>
-                                  <option value="Sterk vervuild">Sterk vervuild</option>
-                                </select>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Wissers sectie */}
-                {wissersTabel.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-600">Geen wissers-abonnementen gevonden voor deze klant.</p>
-                  </div>
-                )}
-                {wissersTabel.length > 0 && (
-                  <div className="space-y-8">
-                    <h2 className="text-2xl font-bold text-blue-900 mb-2 mt-6">2.3 Aantal wissers</h2>
-                    <div className="space-y-2">
-                      <Label>Zien we wissers van concurrenten staan?</Label>
-                       <div className="flex flex-col sm:flex-row gap-4">
-                         <label className="flex items-center gap-2">
-                           <input 
-                             type="radio" 
-                             name="wissers_concurrent" 
-                             value="nee" 
-                             defaultChecked 
-                             onChange={(e) => {
-                               if (e.target.checked) {
-                                 setWissersData(prev => ({ ...prev, wissers_concurrent: "Nee" }));
-                               }
-                             }}
-                             className="w-5 h-5"
-                           />
-                           Nee
-                         </label>
-                         <label className="flex items-center gap-2">
-                           <input 
-                             type="radio" 
-                             name="wissers_concurrent" 
-                             value="ja" 
-                             onChange={(e) => {
-                               if (e.target.checked) {
-                                 setWissersData(prev => ({ ...prev, wissers_concurrent: "Ja" }));
-                               }
-                             }}
-                             className="w-5 h-5"
-                           />
-                           Ja
-                         </label>
                        </div>
-                        
-                         {wissersData?.wissers_concurrent === "Ja" && (
-                           <div className="ml-6 space-y-2">
-                             <Label>Welke concurrent(en)?</Label>
-                             <Input
-                               placeholder="Bijv. CWS, ELIS, etc."
-                               onChange={(e) => {
-                                 setWissersData(prev => ({ ...prev, wissers_concurrent_toelichting: e.target.value }));
-                               }}
+
+                       {/* Feedback & Opmerkingen Sectie */}
+                       <div className="bg-gray-50 rounded-lg p-6">
+                         <h3 className="text-lg font-medium text-gray-900 mb-4">Feedback & Algemene Opmerkingen</h3>
+                         <div className="space-y-4">
+                           <div>
+                             <Label>Algemene opmerkingen over de inspectie</Label>
+                             <textarea
+                               className="w-full p-3 border border-gray-300 rounded-md"
+                               rows={4}
+                               placeholder="Heeft u algemene opmerkingen over de inspectie? Bijvoorbeeld over de staat van de locatie, bijzondere omstandigheden, of andere relevante informatie..."
+                               value={algemeneOpmerkingen}
+                               onChange={(e) => setAlgemeneOpmerkingen(e.target.value)}
                              />
                            </div>
-                         )}
+                           
+                           <div>
+                             <Label>Klanttevredenheid</Label>
+                             <select
+                               value={klanttevredenheid}
+                               onChange={(e) => setKlanttevredenheid(e.target.value)}
+                               className="w-full p-2 border border-gray-300 rounded-md"
+                             >
+                               <option value="">Selecteer tevredenheid...</option>
+                               <option value="zeer_tevreden">Zeer tevreden</option>
+                               <option value="tevreden">Tevreden</option>
+                               <option value="neutraal">Neutraal</option>
+                               <option value="ontevreden">Ontevreden</option>
+                               <option value="zeer_ontevreden">Zeer ontevreden</option>
+                             </select>
+                           </div>
+                           
+                           <div>
+                             <Label>Vervolgacties</Label>
+                             <textarea
+                               className="w-full p-3 border border-gray-300 rounded-md"
+                               rows={3}
+                               placeholder="Welke vervolgacties zijn nodig? Bijvoorbeeld: extra service, vervanging van materialen, contact met klant, etc."
+                               value={vervolgacties}
+                               onChange={(e) => setVervolgacties(e.target.value)}
+                             />
+                           </div>
+                           
+                           <div>
+                             <Label>Datum volgende inspectie</Label>
+                             <Input
+                               type="date"
+                               value={volgendeInspectie}
+                               onChange={(e) => setVolgendeInspectie(e.target.value)}
+                               className="w-full"
+                             />
+                           </div>
+                         </div>
                        </div>
-                       
-                       <div className="space-y-2">
-                         <Label>Andere schoonmaakmiddelen</Label>
-                         <textarea
-                           className="w-full p-2 border rounded-md"
-                           rows={3}
-                           placeholder="Zie je andere schoonmaakmiddelen staan? (Bezems, wissers van andere leveranciers, etc.)"
-                           onChange={(e) => {
-                             setWissersData(prev => ({ ...prev, andere_zaken: e.target.value }));
-                           }}
-                         />
-                       </div>
+                     </CardContent>
+                   </Card>
+                 </TabsContent>
 
-                      {/* Wissers tabel */}
-                      <div className="space-y-2">
-                        <div className="border rounded-lg overflow-hidden">
-                          <table className="w-full">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="p-2 text-left">Artikel</th>
-                                <th className="p-2 text-left">Aantal geteld</th>
-                                <th className="p-2 text-left">Waarvan gebruikt</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {wissersTabel.map((wisser, index) => (
-                                <tr key={index} className="border-t">
-                                  <td className="p-2 font-medium">{wisser["Type wisser"]}</td>
-                                  <td className="p-2">
-                                    <Input
-                                      type="number"
-                                      value={wisser["Aantal aanwezig"]}
-                                      onChange={(e) => {
-                                        const newWissers = [...wissersTabel];
-                                        newWissers[index]["Aantal aanwezig"] = parseInt(e.target.value) || 0;
-                                        setWissersTabel(newWissers);
-                                      }}
-                                      className="w-20"
-                                    />
-                                  </td>
-                                  <td className="p-2">
-                                    <Input
-                                      type="number"
-                                      value={wisser["Waarvan gebruikt"]}
-                                      onChange={(e) => {
-                                        const newWissers = [...wissersTabel];
-                                        newWissers[index]["Waarvan gebruikt"] = parseInt(e.target.value) || 0;
-                                        setWissersTabel(newWissers);
-                                      }}
-                                      className="w-20"
-                                    />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                <TabsContent value="todo">
+                  <Card>
+                    <CardContent className="space-y-6 pt-6">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-semibold">To-do Lijst</h2>
+                        <Button 
+                          onClick={genereerTodoList}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          🔄 Genereer To-do's
+                        </Button>
+                      </div>
+
+                      {/* Inspectie To-do's */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium text-gray-900">Inspectie To-do's</h3>
+                        <div className="space-y-2">
+                          {todoList.map((todo, index) => (
+                            <div key={index} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                              <Checkbox
+                                checked={todo.done}
+                                onCheckedChange={(val) => {
+                                  const updated = [...todoList];
+                                  updated[index].done = val;
+                                  setTodoList(updated);
+                                }}
+                              />
+                              <Input
+                                value={todo.text}
+                                onChange={(e) => {
+                                  const updated = [...todoList];
+                                  updated[index].text = e.target.value;
+                                  setTodoList(updated);
+                                }}
+                                className={todo.done ? "line-through text-gray-500" : ""}
+                              />
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setTodoList(todoList.filter((_, i) => i !== index))}
+                              >
+                                🗑️
+                              </Button>
+                            </div>
+                          ))}
                         </div>
                       </div>
 
-                      {/* Toebehoren tabel */}
-                      <h2 className="text-2xl font-bold text-blue-900 mb-2 mt-8">2.4 Stelen en toebehoren</h2>
-                      <div className="space-y-2">
-                        <div className="border rounded-lg overflow-hidden">
-                          <table className="w-full">
-                            <thead className="bg-gray-50">
-                              <tr>
-                                <th className="p-2 text-left">Artikel</th>
-                                <th className="p-2 text-left">Vervangen</th>
-                                <th className="p-2 text-left">Aantal</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {toebehorenTabel.map((toebehoren, index) => (
-                                <tr key={index} className="border-t">
-                                  <td className="p-2 font-medium">{toebehoren["Type accessoire"]}</td>
-                                  <td className="p-2">
-                                    <Checkbox
-                                      checked={toebehoren.Vervangen}
-                                      onCheckedChange={(checked) => {
-                                        const newToebehoren = [...toebehorenTabel];
-                                        newToebehoren[index].Vervangen = checked;
-                                        setToebehorenTabel(newToebehoren);
-                                      }}
-                                    />
-                                  </td>
-                                  <td className="p-2">
-                                    <Input
-                                      type="number"
-                                      value={toebehoren.Aantal}
-                                      onChange={(e) => {
-                                        const newToebehoren = [...toebehorenTabel];
-                                        newToebehoren[index].Aantal = parseInt(e.target.value) || 0;
-                                        setToebehorenTabel(newToebehoren);
-                                      }}
-                                      className="w-20"
-                                    />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                      {/* Klantenservice To-do's */}
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium text-gray-900">Klantenservice To-do's</h3>
+                        <div className="space-y-2">
+                          {klantenserviceTodoList.map((todo, index) => (
+                            <div key={index} className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                              <Checkbox
+                                checked={todo.done}
+                                onCheckedChange={(val) => {
+                                  const updated = [...klantenserviceTodoList];
+                                  updated[index].done = val;
+                                  setKsTodoList(updated);
+                                }}
+                              />
+                              <Input
+                                value={todo.text}
+                                onChange={(e) => {
+                                  const updated = [...klantenserviceTodoList];
+                                  updated[index].text = e.target.value;
+                                  setKsTodoList(updated);
+                                }}
+                                className={todo.done ? "line-through text-gray-500" : ""}
+                              />
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setKsTodoList(klantenserviceTodoList.filter((_, i) => i !== index))}
+                              >
+                                🗑️
+                              </Button>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
-                {/* Feedback */}
-                <div className="space-y-2">
-                  <Label htmlFor="feedback">Feedback klant</Label>
-                  <textarea
-                    id="feedback"
-                    className="w-full p-2 border rounded-md"
-                    rows={3}
-                    placeholder="Heeft de klant feedback of opmerkingen?"
-                  />
-                </div>
+                <TabsContent value="contact">
+                  <Card>
+                    <CardContent className="space-y-4 pt-6">
+                      <h2 className="text-xl font-semibold">Contactpersoon beheren</h2>
+                      <p className="text-sm text-gray-600">
+                        Controleer hieronder of de juiste contactpersonen in het systeem staan. 
+                        Pas aan waar nodig. Als alles klopt, hoef je niets te doen.
+                      </p>
+                      
+                      {contactpersonenLoading && (
+                        <div className="text-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                          <p className="text-gray-600">Laden van contactpersonen...</p>
+                        </div>
+                      )}
 
-                                 <Button 
-                                   onClick={handleSaveInspectie} 
-                                   className="w-full p-4 text-base"
-                                   disabled={saving}
-                                 >
-                                   {saving ? "💾 Opslaan..." : "💾 Sla alles op voor deze klant"}
-                                 </Button>
-                                 {saveError && (
-                                   <p className="text-red-500 text-sm mt-2">Fout bij opslaan: {saveError}</p>
-                                 )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                      {contactpersonenError && (
+                        <div className="text-center py-8">
+                          <p className="text-red-500">❌ Fout bij laden contactpersonen: {contactpersonenError}</p>
+                        </div>
+                      )}
 
-          <TabsContent value="todo">
-            <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">To-do lijst voor servicemedewerkers</h2>
-                
-                {todoList.map((todo, index) => (
-                  <div key={index} className="flex items-center gap-2 mb-2">
-                    <Checkbox
-                      checked={todo.done}
-                      onCheckedChange={(val) => {
-                        const updated = [...todoList];
-                        updated[index].done = val;
-                        setTodoList(updated);
-                      }}
-                    />
-                    <Input
-                      value={todo.text}
-                      onChange={(e) => {
-                        const updated = [...todoList];
-                        updated[index].text = e.target.value;
-                        setTodoList(updated);
-                      }}
-                    />
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setTodoList(todoList.filter((_, i) => i !== index))}
-                    >
-                      🗑️
-                    </Button>
-                  </div>
-                ))}
-                
-                <div className="mt-6">
-                  <h3 className="text-lg font-semibold mb-4">To-do klantenservice</h3>
-                  {klantenserviceTodoList.map((todo, index) => (
-                    <div key={index} className="flex items-center gap-2 mb-2">
-                      <Checkbox
-                        checked={todo.done}
-                        onCheckedChange={(val) => {
-                          const updated = [...klantenserviceTodoList];
-                          updated[index].done = val;
-                          setKsTodoList(updated);
-                        }}
-                      />
-                      <Input
-                        value={todo.text}
-                        onChange={(e) => {
-                          const updated = [...klantenserviceTodoList];
-                          updated[index].text = e.target.value;
-                          setKsTodoList(updated);
-                        }}
-                      />
+                      {!contactpersonenLoading && !contactpersonenError && contactpersonenData.length === 0 && (
+                        <div className="text-center py-8">
+                          <p className="text-gray-600">Geen contactpersonen gevonden voor deze klant.</p>
+                        </div>
+                      )}
+                      
+                      {!contactpersonenLoading && !contactpersonenError && contactpersonenData.map((contact, index) => (
+                        <div key={index} className="border rounded-lg p-4 space-y-4 bg-white">
+                          <h3 className="font-medium">
+                            {formatNaam(contact.voornaam, contact.tussenvoegsel, contact.achternaam)}
+                          </h3>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <Label>Voornaam</Label>
+                              <Input
+                                value={contact.voornaam || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].voornaam = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label>Tussenvoegsel</Label>
+                              <Input
+                                value={contact.tussenvoegsel || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].tussenvoegsel = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label>Achternaam</Label>
+                              <Input
+                                value={contact.achternaam || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].achternaam = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label>E-mailadres</Label>
+                              <Input
+                                value={contact.email || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].email = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label>Telefoonnummer</Label>
+                              <Input
+                                value={contact.telefoon || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].telefoon = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <Label>Functie</Label>
+                              <Input
+                                value={contact.functie || ""}
+                                onChange={(e) => {
+                                  const newContacten = [...contactpersonenData];
+                                  newContacten[index].functie = e.target.value;
+                                  setContactpersonenData(newContacten);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      
                       <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setKsTodoList(klantenserviceTodoList.filter((_, i) => i !== index))}
+                        onClick={() => {
+                          const newContact = {
+                            voornaam: "",
+                            tussenvoegsel: "",
+                            achternaam: "",
+                            email: "",
+                            telefoon: "",
+                            functie: ""
+                          };
+                          setContactpersonenData([...contactpersonenData, newContact]);
+                        }}
+                        className="w-full"
                       >
-                        🗑️
+                        ➕ Nieuwe contactpersoon toevoegen
                       </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
-          <TabsContent value="contact">
-            <Card>
-              <CardContent className="space-y-4 pt-6">
-                <h2 className="text-xl font-semibold">Contactpersoon beheren</h2>
-                <p className="text-sm text-gray-600">
-                  Controleer hieronder of de juiste contactpersonen in het systeem staan. 
-                  Pas aan waar nodig. Als alles klopt, hoef je niets te doen.
-                </p>
-                
-                {/* Loading state */}
-                {contactpersonenLoading && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-600">Laden van contactpersonen...</p>
-                  </div>
-                )}
-
-                {/* Error state */}
-                {contactpersonenError && (
-                  <div className="text-center py-8">
-                    <p className="text-red-500">Fout bij laden contactpersonen: {contactpersonenError}</p>
-                  </div>
-                )}
-
-                {/* Contactpersonen data */}
-                {!contactpersonenLoading && !contactpersonenError && contactpersonenData.length === 0 && (
-                  <div className="text-center py-8">
-                    <p className="text-gray-600">Geen contactpersonen gevonden voor deze klant.</p>
-                  </div>
-                )}
-                {!contactpersonenLoading && !contactpersonenError && contactpersonenData.map((contact, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-4">
-                    <h3 className="font-medium">
-                      {formatNaam(contact.Voornaam, contact.Tussenvoegsel, contact.Achternaam)}
-                    </h3>
-                    
-                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <Label>Voornaam</Label>
-                        <Input
-                          value={contact.Voornaam}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Voornaam = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
+                <TabsContent value="rapportage">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <h2 className="text-xl font-semibold mb-4">Management Rapportage</h2>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        <div className="bg-blue-50 p-4 rounded-lg">
+                          <p className="text-sm text-blue-600 font-medium">Totaal bezoeken</p>
+                          <p className="text-2xl font-bold text-blue-900">{inspecties.length}</p>
+                        </div>
+                        <div className="bg-green-50 p-4 rounded-lg">
+                          <p className="text-sm text-green-600 font-medium">Vandaag</p>
+                          <p className="text-2xl font-bold text-green-900">
+                            {inspecties.filter(i => i.datum === new Date().toISOString().split('T')[0]).length}
+                          </p>
+                        </div>
+                        <div className="bg-purple-50 p-4 rounded-lg">
+                          <p className="text-sm text-purple-600 font-medium">Deze week</p>
+                          <p className="text-2xl font-bold text-purple-900">
+                            {inspecties.filter(i => {
+                              const inspectieDate = new Date(i.datum);
+                              const weekAgo = new Date();
+                              weekAgo.setDate(weekAgo.getDate() - 7);
+                              return inspectieDate >= weekAgo;
+                            }).length}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <Label>Tussenvoegsel</Label>
-                        <Input
-                          value={contact.Tussenvoegsel}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Tussenvoegsel = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Achternaam</Label>
-                        <Input
-                          value={contact.Achternaam}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Achternaam = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>E-mailadres</Label>
-                        <Input
-                          value={contact.Email}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Email = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Telefoonnummer</Label>
-                        <Input
-                          value={contact.Telefoon}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Telefoon = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label>Klantenportaal gebruikersnaam</Label>
-                        <Input
-                          value={contact.Klantenportaal}
-                          onChange={(e) => {
-                            const newContacten = [...contactpersonenData];
-                            newContacten[index].Klantenportaal = e.target.value;
-                            setContactpersonenData(newContacten);
-                          }}
-                        />
-                      </div>
-                    </div>
-                    
-                                         <div className="flex flex-col sm:flex-row gap-4">
-                       <div className="flex items-center gap-2">
-                         <Checkbox
-                           checked={contact.Nog_in_dienst}
-                           onCheckedChange={(checked) => {
-                             const newContacten = [...contactpersonenData];
-                             newContacten[index].Nog_in_dienst = checked;
-                             setContactpersonenData(newContacten);
-                           }}
-                         />
-                         <Label>Nog in dienst</Label>
-                       </div>
-                       <div className="flex items-center gap-2">
-                         <Checkbox
-                           checked={contact.Routecontact}
-                           onCheckedChange={(checked) => {
-                             const newContacten = [...contactpersonenData];
-                             newContacten[index].Routecontact = checked;
-                             setContactpersonenData(newContacten);
-                           }}
-                         />
-                         <Label>Routecontact</Label>
-                       </div>
-                     </div>
-                  </div>
-                ))}
-                
-                <Button
-                  onClick={() => {
-                    const newContact = {
-                      Voornaam: "",
-                      Tussenvoegsel: "",
-                      Achternaam: "",
-                      Email: "",
-                      Telefoon: "",
-                      Klantenportaal: "",
-                      Nog_in_dienst: true,
-                      Routecontact: false
-                    };
-                    setContactpersonenData([...contactpersonenData, newContact]);
-                  }}
-                >
-                  ➕ Nieuwe contactpersoon toevoegen
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="rapportage">
-            <Card>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">Management Rapportage</h2>
-                <p className="mb-4">Totaal aantal bezoeken: {inspecties.length}</p>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={inspecteurStats()}>
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="count" fill="#1E3A8A" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      )}
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={inspecteurStats()}>
+                          <XAxis dataKey="name" />
+                          <YAxis />
+                          <Tooltip />
+                          <Bar dataKey="count" fill="#1E3A8A" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 } 
